@@ -1,190 +1,210 @@
 set serveroutput on;
-DECLARE
-  dig NUMBER;
-BEGIN
-  SELECT count(*) INTO dig FROM user_tables 
-    WHERE TABLE_NAME = 'TICTACTOE';
-  IF dig = 0 THEN
-    EXECUTE IMMEDIATE 'CREATE TABLE TICTACTOE(
+
+--create game table
+CREATE TABLE tictactoe(
       y NUMBER,
       A CHAR,
       B CHAR,
       C CHAR
-    )';
- END IF;
+    );
+
+-- print the current game
+CREATE OR REPLACE PROCEDURE print_current_game IS
+BEGIN
+  dbms_output.enable(10000);
+  dbms_output.put_line(' ');
+  FOR ll in (SELECT * FROM tictactoe ORDER BY Y) LOOP
+    dbms_output.put_line('     ' || ll.A || ' ' || ll.B || ' ' || ll.C);
+  END LOOP; 
+  dbms_output.put_line(' ');
 END;
-
-
-
-
-
-
-CREATE OR REPLACE FUNCTION digtocolm(Di IN NUMBER)
+/
+-- convert column number to name
+CREATE OR REPLACE FUNCTION colname_from_numb(numb IN NUMBER)
 RETURN CHAR
 IS
 BEGIN
-  IF Di=1 THEN
+  IF numb=1 THEN
     RETURN 'A';
-  ELSIF Di=2 THEN
+  ELSIF numb=2 THEN
     RETURN 'B';
-  ELSIF Di=3 THEN
+  ELSIF numb=3 THEN
     RETURN 'C';
   ELSE 
     RETURN '_';
   END IF;
 END;
+/
 
-CREATE OR REPLACE PROCEDURE game_board IS
+-- reset game table
+CREATE OR REPLACE PROCEDURE ourgame_restart IS
+exp NUMBER;
+BEGIN
+  DELETE FROM tictactoe;
+  FOR exp in 1..3 LOOP
+    INSERT INTO tictactoe VALUES (exp,'_','_','_');
+  END LOOP; 
+  dbms_output.enable(10000);
+  print_current_game();
+  dbms_output.put_line('Game ready ');
+END;
+/
+
+CREATE OR REPLACE PROCEDURE play(p_symb IN VARCHAR2, numb_column IN NUMBER, ligne IN NUMBER) IS
+val tictactoe.a%type;
+colmn CHAR;
+p_symb2 CHAR;
+
+BEGIN
+ 
+  SELECT colname_from_numb(numb_column) INTO colmn FROM DUAL;
+  EXECUTE IMMEDIATE ('SELECT ' || colmn || ' FROM tictactoe WHERE y=' || ligne) INTO val;
+  IF val='_' THEN
+    EXECUTE IMMEDIATE ('UPDATE tictactoe SET ' || colmn || '=''' || p_symb || ''' WHERE y=' || ligne);
+    IF p_symb='X' THEN
+      p_symb2:='O';
+    ELSE
+      p_symb2:='X';
+    END IF;
+    print_current_game();
+    dbms_output.put_line('turn belongs to: ' || p_symb2 || '');
+  ELSE
+    dbms_output.enable(10000);
+    dbms_output.put_line('position already occupied');
+  END IF;
+END;
+/
+
+--printing winner and reset new game
+CREATE OR REPLACE PROCEDURE winner(p_symb IN VARCHAR2) IS
+BEGIN
+  dbms_output.enable(10000);
+  print_current_game();
+  dbms_output.put_line('the player  ' || p_symb || ' has won the game'); 
+  dbms_output.put_line('---------------------------------------');
+  dbms_output.put_line('New game about to start');
+  ourgame_restart();
+END;
+/
+-- print the current game
+CREATE OR REPLACE PROCEDURE print_current_game IS
 BEGIN
   dbms_output.enable(10000);
   dbms_output.put_line(' ');
-  FOR ll in (SELECT * FROM TICTACTOE ORDER BY Y) LOOP
+  FOR ll in (SELECT * FROM tictactoe ORDER BY Y) LOOP
     dbms_output.put_line('     ' || ll.A || ' ' || ll.B || ' ' || ll.C);
   END LOOP; 
   dbms_output.put_line(' ');
 END;
-
-
-CREATE OR REPLACE PROCEDURE re_enable IS
-Y NUMBER;
-BEGIN
-  DELETE FROM TICTACTOE;
-  FOR Y in 1..3 LOOP
-    INSERT INTO TICTACTOE VALUES (Y,'_','_','_');
-  END LOOP; 
-  dbms_output.enable(10000);
-  game_board();
-  dbms_output.put_line('The game is loaded : EXECUTE play(''X'', x, y);');
-END;
-
-
-CREATE OR REPLACE PROCEDURE play(icon IN VARCHAR2, Colm IN NUMBER, cord IN NUMBER) IS
-val TICTACTOE.a%type;
-calls CHAR;
-icon1 CHAR;
-BEGIN
-  SELECT digtocolm(Colm) INTO calls FROM DUAL;
-  EXECUTE IMMEDIATE ('SELECT ' || calls || ' FROM TICTACTOE WHERE y=' || cord) INTO val;
-  IF val='_' THEN
-    EXECUTE IMMEDIATE ('UPDATE TICTACTOE SET ' || calls || '=''' || icon || ''' WHERE y=' || cord);
-    IF icon='X' THEN
-      icon1:='O';
-    ELSE
-      icon1:='X';
-    END IF;
-    game_board();
-    dbms_output.put_line('Ready - EXECUTE play(''' || icon1 || ''', x, y);');
-  ELSE
-    dbms_output.enable(10000);
-    dbms_output.put_line('Played in past');
-  END IF;
-END;
-
-CREATE OR REPLACE PROCEDURE victor(icon IN VARCHAR2) IS
-BEGIN
-  dbms_output.enable(10000);
-  game_board();
-  dbms_output.put_line('You' || icon || 'made it'); 
-  dbms_output.put_line('---------------------------------------');
-  dbms_output.put_line('restart game');
-  re_enable();
-END;
-
-CREATE OR REPLACE FUNCTION winner_req(num_c IN VARCHAR2, icon IN VARCHAR2)
+/
+CREATE OR REPLACE FUNCTION sub_col_win(colm_numb IN VARCHAR2, p_symb IN VARCHAR2)
 RETURN VARCHAR2
 IS
 BEGIN
-  RETURN ('SELECT COUNT(*) FROM TICTACTOE WHERE ' || num_c || ' = '''|| icon ||''' AND ' || num_c || ' != ''_''');
+  RETURN ('SELECT COUNT(*) FROM tictactoe WHERE ' || colm_numb || ' = '''|| p_symb ||''' AND ' || colm_numb || ' != ''_''');
 END;
+/
 
-CREATE OR REPLACE FUNCTION win_req(num_c IN VARCHAR2, yvalue IN NUMBER)
+CREATE OR REPLACE FUNCTION sub_cross_win(colm_numb IN VARCHAR2, yvalue IN NUMBER)
 RETURN VARCHAR2
 IS
 BEGIN
-  RETURN ('SELECT '|| num_c ||' FROM TICTACTOE WHERE y=' || yvalue);
+  RETURN ('SELECT '|| colm_numb ||' FROM tictactoe WHERE y=' || yvalue);
 END;
+/
 
-CREATE OR REPLACE FUNCTION win_call(num_c IN VARCHAR2)
+CREATE OR REPLACE FUNCTION wincol(colm_numb IN VARCHAR2)
 RETURN CHAR
 IS
-  I_win NUMBER;
-  r VARCHAR2(56);
+  nbwin NUMBER;
+  r VARCHAR2(100);
 BEGIN
-  SELECT winner_req(num_c, 'X') into r FROM DUAL;
-  EXECUTE IMMEDIATE r INTO I_win;
-  IF I_win=3 THEN
+  SELECT sub_col_win(colm_numb, 'X') into r FROM DUAL;
+  EXECUTE IMMEDIATE r INTO nbwin;
+  IF nbwin=3 THEN
     RETURN 'X';
-  ELSIF I_win=0 THEN
-    SELECT winner_req(num_c, 'O') into r FROM DUAL;
-    EXECUTE IMMEDIATE r INTO I_win;
-    IF I_win=3 THEN
+  ELSIF nbwin=0 THEN
+    SELECT sub_col_win(colm_numb, 'O') into r FROM DUAL;
+    EXECUTE IMMEDIATE r INTO nbwin;
+    IF nbwin=3 THEN
       RETURN 'O';
     END IF;
   END IF;
   RETURN '_';
 END;
+/
 
-CREATE OR REPLACE FUNCTION Vic_cross(tmp IN CHAR, numcall IN NUMBER, numcord IN NUMBER)
+CREATE OR REPLACE FUNCTION wincross(tmpx IN CHAR, numcol IN NUMBER, numligne IN NUMBER)
 RETURN CHAR
 IS
-  tm CHAR;
-  tmvar CHAR;
-  r VARCHAR2(56);
+  tmpvar CHAR;
+  x_temp_var CHAR;
+  r VARCHAR2(100);
 BEGIN
-  SELECT win_req(digtocolm(numcall), numcord) INTO r FROM DUAL;
-  IF tmp IS NULL THEN
-    EXECUTE IMMEDIATE (r) INTO tmvar;
-  ELSIF NOT tmp = '_' THEN
-    EXECUTE IMMEDIATE (r) INTO tm;
-    IF NOT tmp = tm THEN
-      tmvar := '_';
+  SELECT sub_cross_win(colname_from_numb(numcol), numligne) INTO r FROM DUAL;
+  IF tmpx IS NULL THEN
+    EXECUTE IMMEDIATE (r) INTO x_temp_var;
+  ELSIF NOT tmpx = '_' THEN
+    EXECUTE IMMEDIATE (r) INTO tmpvar;
+    IF NOT tmpx = tmpvar THEN
+      x_temp_var := '_';
     END IF;
   ELSE
-    tmvar := '_';
+    x_temp_var := '_';
   END IF;
-  RETURN tmvar;
+  RETURN x_temp_var;
 END;
+/
 
-CREATE OR REPLACE TRIGGER isvictory
-AFTER UPDATE ON TICTACTOE
+CREATE OR REPLACE TRIGGER iswinner
+AFTER UPDATE ON tictactoe
 DECLARE
-  CURSOR c_cord IS 
-    SELECT * FROM TICTACTOE ORDER BY Y; 
-  pointer TICTACTOE%rowtype;
-  tm CHAR;
-  tm1 CHAR;
-  tm2 CHAR;
-  r VARCHAR2(40);
+  CURSOR cr_ligne IS 
+    SELECT * FROM tictactoe ORDER BY Y; 
+  crlv tictactoe%rowtype;
+  tmpvar CHAR;
+  tmpx1 CHAR;
+  tmpx2 CHAR;
+  r VARCHAR2(100);
 BEGIN
-  FOR pointer IN c_cord LOOP
-    -- line test
-    IF pointer.A = pointer.B AND pointer.B = pointer.C AND NOT pointer.A='_' THEN
-      victor(pointer.A);
+  FOR crlv IN cr_ligne LOOP
+
+    IF crlv.A = crlv.B AND crlv.B = crlv.C AND NOT crlv.A='_' THEN
+      winner(crlv.A);
       EXIT;
     END IF;
-    --column test
-    SELECT win_call(digtocolm(pointer.Y)) INTO tm FROM DUAL;
-    IF NOT tm = '_' THEN
-      victor(tm);
+    SELECT wincol(colname_from_numb(crlv.Y)) INTO tmpvar FROM DUAL;
+    IF NOT tmpvar = '_' THEN
+      winner(tmpvar);
       EXIT;
     END IF;
 
-    SELECT Vic_cross(tm1, pointer.Y, pointer.Y) INTO tm1 FROM dual;
-    SELECT Vic_cross(tm2, 4-pointer.Y, pointer.Y) INTO tm2 FROM dual;
+    SELECT wincross(tmpx1, crlv.Y, crlv.Y) INTO tmpx1 FROM dual;
+    SELECT wincross(tmpx2, 4-crlv.Y, crlv.Y) INTO tmpx2 FROM dual;
   END LOOP;
-  IF NOT tm1 = '_' THEN
-    victor(tm1);
+  IF NOT tmpx1 = '_' THEN
+    winner(tmpx1);
   END IF;
-  IF NOT tm2 = '_' THEN
-    victor(tm2);
+  IF NOT tmpx2 = '_' THEN
+    winner(tmpx2);
   END IF;
 END;
 /
---
 
-EXECUTE re_enable;
-EXECUTE play('X', 1, 3);
-EXECUTE play('O', 2, 1);
-EXECUTE play('X', 2, 2);
-EXECUTE play('O', 2, 3);
-EXECUTE play('X', 3, 1);
+execute ourgame_restart;
+execute play('X',1,1);
+execute play('O',1,2);
+execute play('X',2,2);
+execute play('O',1,3);
+execute play('X',3,3);
+execute play('X',2,1);
+execute play('O',2,3);
+execute play('X',1,3);
+execute play('O',3,3);
+execute play('X',1,1);
+execute play('O',1,2);
+execute play('X',3,1);
+execute play('X',1,1);
+execute play('O',1,1);
+
+execute ourgame_restart;
